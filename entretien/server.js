@@ -1,6 +1,7 @@
 const axios = require("axios");
 const https = require("https");
 const express = require("express");
+const envVar = require("env-var");
 /**
  * Format de la réponse JSON
  * [
@@ -12,63 +13,71 @@ const express = require("express");
  *   }
  * ]
  */
+
+const port = envVar.get("PORT").asInt() ?? 5000;
+
 (async function () {
   const app = express();
 
   app.get("/data", async (req, res) => {
-    let organismes = getData1();
+    const apprentis = await getData3();
 
-    const formations = await getData2();
-
-    let apprentis = null;
-    getData3((data) => {
-      apprentis = data;
-    });
-
+    const organismes = apprentisToOrganismes(apprentis);
     return res.json({
       organismes,
-      formations: formations,
+      formations: apprentis,
       apprentis,
     });
   });
 
-  app.listen(5000, () => console.log(`Server ready and listening on port ${5000}`));
+  app.listen(port, () =>
+    console.log(`Server ready and listening on port ${port}`)
+  );
 })();
 
-async function getData1() {
-  let response = await axios.get("https://mocki.io/v1/cbbd831b-199c-4e48-b426-1ce8ddbf1aa5");
-  let organismes = response.data;
+const apprentisToOrganismes = (apprentis) => {
+  return apprentis.map((organisme) => {
+    const result = JSON.parse(JSON.stringify(organisme));
+    result.nom = result.raison_sociale;
+    delete result.raison_sociale;
+    return result;
+  });
+};
 
-  for (let i = 0; i < organismes.length; i++) {
-    organismes[i].nom = organismes[i].raison_sociale;
-    delete organismes[i].raison_sociale;
-  }
+const getData3 = () => {
+  // [
+  //   {
+  //   "nom": "organisme1",
+  //   "adresse1": "36 rue des lilas Paris"
+  //   },
+  //   {
+  //   "nom": "organisme2",
+  //   "adresse": "31 rue des lilas Paris"
+  //   }
+  //   ]
+  return new Promise((resolve, reject) => {
+    https
+      .get(
+        "https://mocki.io/v1/cbbd831b-199c-4e48-b426-1ce8ddbf1aa5",
+        (resp) => {
+          let data = "";
 
-  return organismes;
-}
+          resp.on("data", (chunk) => {
+            data += chunk;
+          });
 
-async function getData2() {
-  try {
-    return axios.get("https://mocki.io/v1/cbbd831b-199c-4e48-b426-1ce8ddbf1aa5").then((response) => response.data);
-  } catch (e) {
-    console.error(e);
-  }
-}
-
-const getData3 = (callback) => {
-  https
-    .get("https://mocki.io/v1/cbbd831b-199c-4e48-b426-1ce8ddbf1aa5", (resp) => {
-      let data = "";
-
-      resp.on("data", (chunk) => {
-        data += chunk;
+          resp.on("end", () => {
+            try {
+              const json = JSON.parse(data);
+              resolve(json);
+            } catch (err) {
+              reject(err);
+            }
+          });
+        }
+      )
+      .on("error", (err) => {
+        reject(err);
       });
-
-      resp.on("end", () => {
-        return callback(data);
-      });
-    })
-    .on("error", (err) => {
-      console.log("Error: " + err.message);
-    });
+  });
 };
